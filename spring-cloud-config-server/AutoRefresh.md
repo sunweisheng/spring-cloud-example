@@ -2,7 +2,7 @@
 
 ## 方案示意图
 
-![Alt text](http://static.bluersw.com/images/spring-cloud-config-server/spring-cloud-config-server-08.png)  
+![Alt text](http://static.bluersw.com/images/spring-cloud-config-server/spring-cloud-config-server-08-1.png)  
 
 利用Git服务的webhook通知功能，在每次更新配置之后，Git服务器会用POST方式调用配置中心的/actuator/bus-refresh接口，配置中心的总线服务会将此事件广播给加入总线的所有客户端，客户端收到事件后会从新读取配置中心的内容。
 
