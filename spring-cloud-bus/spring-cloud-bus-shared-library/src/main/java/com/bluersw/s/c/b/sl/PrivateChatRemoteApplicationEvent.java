@@ -9,6 +9,8 @@ public class PrivateChatRemoteApplicationEvent extends RemoteApplicationEvent {
 
 	private String message;
 
+	private PrivateChatRemoteApplicationEvent(){}
+
 	public PrivateChatRemoteApplicationEvent(Object source, String originService,
 			String destinationService,String message){
 		super(source, originService, destinationService);
