@@ -15,3 +15,4 @@
 * [创建客户端项目并读取服务化的配置中心](./spring-cloud-config-server/ConfigClient.md)
 * [手动刷新客户端配置内容](./spring-cloud-config-server/ManualRefresh.md)
 * [通过总线机制实现自动刷新客户端配置](./spring-cloud-config-server/AutoRefresh.md)
+* [细聊Spring Cloud Bus](./spring-cloud-bus/README.md)

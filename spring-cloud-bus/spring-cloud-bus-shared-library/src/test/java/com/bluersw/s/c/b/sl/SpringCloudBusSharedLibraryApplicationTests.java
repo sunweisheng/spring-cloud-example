@@ -17,11 +17,11 @@ public class SpringCloudBusSharedLibraryApplicationTests {
 	private ApplicationEventPublisher context;
 
 	@Autowired
-	protected BusProperties bp;
+	private BusProperties bp;
 
 	@Test
 	public void PublishEventTest() {
-		context.publishEvent(new PrivateChatRemoteApplicationEvent(this,bp.getId(),null,"测试信息"));
+		context.publishEvent(new ChatRemoteApplicationEvent(this,bp.getId(),null,"测试群聊"));
 	}
 
 }

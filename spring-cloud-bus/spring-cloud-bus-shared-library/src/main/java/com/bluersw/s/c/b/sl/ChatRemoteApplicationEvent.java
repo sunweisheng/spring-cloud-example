@@ -3,15 +3,15 @@ package com.bluersw.s.c.b.sl;
 import org.springframework.cloud.bus.event.RemoteApplicationEvent;
 
 /**
- * 总线私聊事件
+ * 聊天事件
  */
-public class PrivateChatRemoteApplicationEvent extends RemoteApplicationEvent {
+public class ChatRemoteApplicationEvent extends RemoteApplicationEvent {
 
 	private String message;
 
-	private PrivateChatRemoteApplicationEvent(){}
+	private ChatRemoteApplicationEvent(){}
 
-	public PrivateChatRemoteApplicationEvent(Object source, String originService,
+	public ChatRemoteApplicationEvent(Object source, String originService,
 			String destinationService,String message){
 		super(source, originService, destinationService);
 

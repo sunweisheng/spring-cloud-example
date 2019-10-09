@@ -1,6 +1,6 @@
 package com.bluersw.s.c.b.a;
 
-import com.bluersw.s.c.b.sl.PrivateChatRemoteApplicationEvent;
+import com.bluersw.s.c.b.sl.ChatRemoteApplicationEvent;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -18,11 +18,11 @@ public class SpringCloudBusAApplicationTests {
 	private ApplicationEventPublisher context;
 
 	@Autowired
-	protected BusProperties bp;
+	private BusProperties bp;
 
 	@Test
-	public void PublishEventTest() {
-		context.publishEvent(new PrivateChatRemoteApplicationEvent(this,bp.getId(),null,"测试信息"));
+	public void AChat() {
+		context.publishEvent(new ChatRemoteApplicationEvent(this,bp.getId(),null,"hi!B应用，我是A应用，。"));
 	}
 
 }

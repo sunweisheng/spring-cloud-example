@@ -113,7 +113,7 @@ public class RefreshListener
 }
 ```
 
-在BusRefreshAutoConfiguration类中会将RefreshListener对象注册到Spring的BeanFactory中（不把监听器类注册到Spring的BeanFactory中就无法利用Spring的事件驱动模型对刷新事件进行订阅处理）。
+在BusRefreshAutoConfiguration类中会将RefreshListener对象注册到Spring的BeanFactory中（不把监听器类注册到Spring的BeanFactory中就无法利用Spring的事件驱动模型对刷新事件进行处理）。
 
 ```java
 	@Bean
@@ -193,7 +193,7 @@ public class AbstractBusEndpoint {
 
 ## Spring Cloud Bus的底层通讯实现（对使用者透明）
 
-Spring Cloud Bus的底层通讯基础是Spring Cloud Stream，负责管理发送总线事件和接收总线事件（在网络上发送和接收其他节点的事件消息）的类是BusAutoConfiguration，因为继承了ApplicationEventPublisherAware所以具备发布本地事件的功能（可以查询Aware接口作用），发布网络事件消息的方法是：
+Spring Cloud Bus的底层通讯基础是Spring Cloud Stream，定义发送总线事件和接收总线事件监听器的类是BusAutoConfiguration（在网络上发送和接收其他节点的事件消息），因为继承了ApplicationEventPublisherAware所以该类也具备发布本地事件的功能（可以查询Aware接口作用），发布网络事件消息的方法是：
 
 ```java
 @EventListener(classes = RemoteApplicationEvent.class)
@@ -280,5 +280,281 @@ public class TraceListener {
 在总线事件发送端和总线事件接收端日志的记录流程如下：
 ![Alt text](http://static.bluersw.com/images/spring-cloud-bus/spring-cloud-bus-05.png)  
 
-## 测试A应用和B应用进行“私聊”
+## 测试A应用和B应用进行“聊天”
 
+首先准备环境：
+创建3个项目：spring-cloud-bus-shared-library、spring-cloud-bus-a、spring-cloud-bus-b
+
+* spring-cloud-bus-shared-library：负责定义事件和监听器还有配置类
+* spring-cloud-bus-a：扮演A应用负责引用shared-library并利用BUS发送消息给B应用（此消息实际为广播消息）
+* spring-cloud-bus-b：扮演B应用负责引用shared-library并利用BUS回复A应用发来的消息（此消息非广播消息）
+
+spring-cloud-bus-shared-library的POM的依赖项：
+
+```xml
+<properties>
+		<java.version>1.8</java.version>
+		<spring-cloud.version>Greenwich.SR3</spring-cloud.version>
+	</properties>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.cloud</groupId>
+			<artifactId>spring-cloud-starter-bus-amqp</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.cloud</groupId>
+				<artifactId>spring-cloud-dependencies</artifactId>
+				<version>${spring-cloud.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+```
+
+删除构建的Maven插件节点否则构建后其他项目引用不了（格式不对）：
+
+```xml
+<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+		</plugins>
+	</build>
+```
+
+启动一个rabbitmq:
+
+```shell
+docker pull rabbitmq:3-management
+
+docker run -d --hostname my-rabbit --name rabbit -p 5672:5672 -p 15672:15672 rabbitmq:3-management
+```
+
+application.properties配置定义：
+
+```text
+spring.application.name=spring-cloud-bus-shared-library
+server.port=9007
+# 开启消息跟踪
+spring.cloud.bus.trace.enabled=true
+spring.rabbitmq.host=127.0.0.1
+spring.rabbitmq.port=5672
+spring.rabbitmq.username=guest
+spring.rabbitmq.password=guest
+
+#显示的暴露接入点
+management.endpoints.web.exposure.include=*
+```
+
+spring-cloud-bus-a、spring-cloud-bus-b的配置信息除了spring.application.name和server.port不一样，其他都是一样的。
+
+自定义一个聊天事件类：
+
+```java
+/**
+ * 聊天事件
+ */
+public class ChatRemoteApplicationEvent extends RemoteApplicationEvent {
+
+	private String message;
+
+	//for serializers
+	private ChatRemoteApplicationEvent(){}
+
+	public ChatRemoteApplicationEvent(Object source, String originService,
+			String destinationService,String message){
+		super(source, originService, destinationService);
+
+		this.message = message;
+	}
+
+	public void setMessage(String message){
+		this.message = message;
+	}
+
+	public String getMessage(){
+		return this.message;
+	}
+}
+```
+
+自定义聊天事件监听器：
+
+```java
+/**
+ * 聊天事件监听
+ */
+public class ChatListener implements ApplicationListener<ChatRemoteApplicationEvent> {
+
+	private static Log log = LogFactory.getLog(ChatListener.class);
+
+	public ChatListener(){}
+
+	@Override
+	public void onApplicationEvent(ChatRemoteApplicationEvent event){
+		log.info(String.format("应用%s对应用%s悄悄的说：\"%s\"",
+				event.getOriginService(),
+				event.getDestinationService(),
+				event.getMessage()));
+	}
+}
+```
+
+配置类将监听器注册到BeanFactory中，并需要显示的告诉Spring Cloud Bus我们有一个自定义事件：@RemoteApplicationEventScan(basePackageClasses=ChatRemoteApplicationEvent.class)，否则BUS收到消息后无法识别事件类型。
+
+```java
+@Configuration
+@ConditionalOnClass(ChatListener.class)
+@RemoteApplicationEventScan(basePackageClasses=ChatRemoteApplicationEvent.class)
+public class BusChatConfiguration {
+
+	@Bean
+	public ChatListener ChatListener(){
+		return new ChatListener();
+	}
+}
+
+```
+
+发布到本地Maven仓库：
+
+```shell
+mvn install
+```
+
+spring-cloud-bus-a、spring-cloud-bus-b的POM依赖：
+
+```xml
+<properties>
+		<java.version>1.8</java.version>
+		<spring-cloud.version>Greenwich.SR3</spring-cloud.version>
+	</properties>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.cloud</groupId>
+			<artifactId>spring-cloud-bus</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.bluersw</groupId>
+			<artifactId>spring-cloud-bus-shared-library</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
+		</dependency>
+	</dependencies>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.cloud</groupId>
+				<artifactId>spring-cloud-dependencies</artifactId>
+				<version>${spring-cloud.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+```
+
+在spring-cloud-bus-a、spring-cloud-bus-b的启动Main函数上增加@ComponentScan(value = "com.bluersw")注解，否则不会扫描引用spring-cloud-bus-shared-library项目的配置类（也就加载不了自定义的事件和监听器类型）。
+
+spring-cloud-bus-a:
+
+```java
+@SpringBootApplication
+@ComponentScan(value = "com.bluersw")
+public class SpringCloudBusAApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(SpringCloudBusAApplication.class, args);
+	}
+
+}
+```
+
+spring-cloud-bus-b:
+
+```java
+@SpringBootApplication
+@ComponentScan(value = "com.bluersw")
+public class SpringCloudBusBApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(SpringCloudBusBApplication.class, args);
+	}
+
+}
+```
+
+spring-cloud-bus-a发送消息给spring-cloud-bus-b（启动spring-cloud-bus-a程序和spring-cloud-bus-b程序）:
+
+```java
+@RunWith(SpringRunner.class)
+@SpringBootTest
+public class SpringCloudBusAApplicationTests {
+
+	@Autowired
+	private ApplicationEventPublisher context;
+
+	@Autowired
+	private BusProperties bp;
+
+	@Test
+	public void AChat() {
+		context.publishEvent(new ChatRemoteApplicationEvent(this,bp.getId(),null,"hi!B应用，我是A应用，。"));
+	}
+
+}
+```
+
+执行AChat()之后，spring-cloud-bus-b的控制台会输出：  
+”应用spring-cloud-bus-a:-1:33b6374cba32e6a3e7e2c8e7631de8c0对应用**悄悄的说："hi!B应用，我是A应用，。”，说明spring-cloud-bus-b收到了消息并正确解析和执行了事件处理函数，但这条消息是群发的，因为destinationService参数我们给的是个null，所有引用spring-cloud-bus-shared-library项目注册监听器的项目都可以收到此信息。
+
+spring-cloud-bus-b回复消息给spring-cloud-bus-a：
+
+```java
+@RunWith(SpringRunner.class)
+@SpringBootTest
+public class SpringCloudBusBApplicationTests {
+
+	@Autowired
+	private ApplicationEventPublisher context;
+
+	@Autowired
+	private BusProperties bp;
+
+	@Test
+	public void BChat() {
+		context.publishEvent(new ChatRemoteApplicationEvent(this,bp.getId(),"spring-cloud-bus-a:9008","hi!我是B应用,这样才能不被其他应用接收到。"));
+	}
+}
+```
+
+spring-cloud-bus-a是项目名称，9008是spring-cloud-bus-a项目的端口号，指定了目标服务参数destinationService后，其他应用就接收不到这条消息了。执行BChat()之后，spring-cloud-bus-a控制台会显示：  
+“应用spring-cloud-bus-b:-1:d577ac1ab28f0fc465a1e4700e7f538a对应用spring-cloud-bus-a:9008:**悄悄的说："hi!我是B应用,这样才能不被其他应用接收到。”  
+此消息现在只有spring-cloud-bus-a项目会接收到。  

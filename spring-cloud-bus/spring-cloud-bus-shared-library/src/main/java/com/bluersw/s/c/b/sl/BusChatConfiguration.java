@@ -6,13 +6,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@ConditionalOnClass(PrivateChatListener.class)
-@RemoteApplicationEventScan(basePackageClasses=PrivateChatRemoteApplicationEvent.class)
-public class ListenerConfiguration {
+@ConditionalOnClass(ChatListener.class)
+@RemoteApplicationEventScan(basePackageClasses=ChatRemoteApplicationEvent.class)
+public class BusChatConfiguration {
 
 	@Bean
-	public PrivateChatListener privateChatListener(){
-		return new PrivateChatListener();
+	public ChatListener ChatListener(){
+		return new ChatListener();
 	}
 }
 
