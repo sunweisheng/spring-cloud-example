@@ -34,13 +34,12 @@ public class BClient {
 		return objectMapper.readValue(message,ChatMessage.class);
 	}
 
-	//没秒发出一个消息给A
+	//每秒发出一个消息给A
 	@Bean
 	@InboundChannelAdapter(value = ChatProcessor.OUTPUT,poller = @Poller(fixedDelay="1000"))
 	public GenericMessage<ChatMessage> SendChatMessage(){
 		ChatMessage message = new ChatMessage("ClientB","B To A Message.", new Date());
 		GenericMessage<ChatMessage> gm = new GenericMessage<>(message);
-
 		return gm;
 	}
 }
