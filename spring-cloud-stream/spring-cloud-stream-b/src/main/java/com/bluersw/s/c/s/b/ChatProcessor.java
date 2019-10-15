@@ -7,8 +7,8 @@ import org.springframework.messaging.SubscribableChannel;
 
 public interface ChatProcessor {
 
-	String OUTPUT = "ChatExchanges.A.Input";
-	String INPUT  = "ChatExchanges.A.Output";
+	String OUTPUT = "ChatExchanges-A-Input";
+	String INPUT  = "ChatExchanges-A-Output";
 
 	@Input(ChatProcessor.INPUT)
 	SubscribableChannel input();

@@ -5,7 +5,7 @@ import org.springframework.messaging.MessageChannel;
 
 public interface ChatOutput {
 
-	String OUTPUT = "ChatExchanges.A.Output";
+	String OUTPUT = "ChatExchanges-A-Output";
 
 	@Output(ChatOutput.OUTPUT)
 	MessageChannel output();

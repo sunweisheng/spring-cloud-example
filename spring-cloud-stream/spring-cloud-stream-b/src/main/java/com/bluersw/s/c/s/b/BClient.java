@@ -1,14 +1,14 @@
 package com.bluersw.s.c.s.b;
 
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 
-import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.springframework.cloud.stream.annotation.EnableBinding;
-import org.springframework.context.MessageSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.integration.annotation.InboundChannelAdapter;
 import org.springframework.integration.annotation.Poller;
@@ -30,6 +30,7 @@ public class BClient {
 
 	@Transformer(inputChannel = ChatProcessor.INPUT,outputChannel = ChatProcessor.INPUT)
 	public ChatMessage transform(String message) throws Exception{
+		//logger.info(message);
 		ObjectMapper objectMapper = new ObjectMapper();
 		return objectMapper.readValue(message,ChatMessage.class);
 	}
@@ -39,7 +40,12 @@ public class BClient {
 	@InboundChannelAdapter(value = ChatProcessor.OUTPUT,poller = @Poller(fixedDelay="1000"))
 	public GenericMessage<ChatMessage> SendChatMessage(){
 		ChatMessage message = new ChatMessage("ClientB","B To A Message.", new Date());
-		GenericMessage<ChatMessage> gm = new GenericMessage<>(message);
-		return gm;
+
+		//这里只是测试实际业务根据需要设计特征值的范围，这个和消费组内有多少实例有关，然后把特征值放在消息头router属性中
+		int feature = 1;
+		Map<String, Object> headers = new HashMap<>();
+		headers.put("router", feature);
+
+		return  new GenericMessage<>(message,headers);
 	}
 }

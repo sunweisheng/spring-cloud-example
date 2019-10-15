@@ -77,24 +77,24 @@ docker run -d --hostname my-rabbit --name rabbit -p 5672:5672 -p 15672:15672 rab
 ## 编写A项目代码
 
 在A项目中定义一个输入通道一个输出通道，定义通道在接口中使用@Input和@Output注解定义，程序启动的时候Spring Cloud Stream会根据接口定义将实现类自动注入（Spring Cloud Stream自动实现该接口不需要写代码）。  
-A服务输入通道，通道名称ChatExchanges.A.Input，接口定义输入通道必须返回SubscribableChannel：
+A服务输入通道，通道名称ChatExchanges-A-Input，接口定义输入通道必须返回SubscribableChannel：
 
 ```java
 public interface ChatInput {
 
-	String INPUT = "ChatExchanges.A.Input";
+	String INPUT = "ChatExchanges-A-Input";
 
 	@Input(ChatInput.INPUT)
 	SubscribableChannel input();
 }
 ```
 
-A服务输出通道，通道名称ChatExchanges.A.Output，输出通道必须返回MessageChannel：
+A服务输出通道，通道名称ChatExchanges-A-Output，输出通道必须返回MessageChannel：
 
 ```java
 public interface ChatOutput {
 
-	String OUTPUT = "ChatExchanges.A.Output";
+	String OUTPUT = "ChatExchanges-A-Output";
 
 	@Output(ChatOutput.OUTPUT)
 	MessageChannel output();
@@ -171,8 +171,8 @@ B项目使用Spring Integration实现消息的发布和消费，定义通道时�
 ```java
 public interface ChatProcessor {
 
-	String OUTPUT = "ChatExchanges.A.Input";
-	String INPUT  = "ChatExchanges.A.Output";
+	String OUTPUT = "ChatExchanges-A-Input";
+	String INPUT  = "ChatExchanges-A-Output";
 
 	@Input(ChatProcessor.INPUT)
 	SubscribableChannel input();
@@ -252,3 +252,106 @@ public class BClient {
 启动A项目和B项目：
 ![Alt text](http://static.bluersw.com/images/spring-cloud-stream/spring-cloud-stream-02.png)  
 ![Alt text](http://static.bluersw.com/images/spring-cloud-stream/spring-cloud-stream-03.png)  
+
+## 消费组和消息分区
+
+* 消费组：服务的部署一般是同一个服务会部署多份，如果希望一条消息只执行一次，就将这些相同服务的不同部署实例设置成一个消费组，消费组内的消息只会被一个实例消费。
+* 消息分区：在一个消费组内除了要保证只有一个实例消费外，还要保证具备相同特征的消息被同一个实例进行消费。
+
+消费组的设定比较简单，在消息的消费方配置文件中增加：  
+spring.cloud.stream.bindings.{通道名称}.group={分组名}  
+spring.cloud.stream.bindings.{通道名称}.destination={主题名}  
+在消息的产生方配置文件中增加：  
+spring.cloud.stream.bindings.{通道名称}.destination={主题名}  
+spring-cloud-stream-a配置内容：
+
+```text
+#设置消费组（消费方设置）
+spring.cloud.stream.bindings.ChatExchanges-A-Input.group=A.group
+spring.cloud.stream.bindings.ChatExchanges-A-Input.destination=AInput
+#设置消费组（生产方设置）
+spring.cloud.stream.bindings.ChatExchanges-A-Output.destination=AOutput
+```
+
+spring-cloud-stream-b配置内容：
+
+```text
+#设置消费组（消费方设置）
+spring.cloud.stream.bindings.ChatExchanges-A-Output.group=B.group
+spring.cloud.stream.bindings.ChatExchanges-A-Output.destination=AOutput
+#设置消费组（生产方设置）
+spring.cloud.stream.bindings.ChatExchanges-A-Input.destination=AInput
+```
+
+消息分区首先在消息消费方开启消息分区并配置消费者数量和当前消费者索引，然后在消息生产者配置分区键表达式和分区数量（因为是测试我们都将数量设置为1）：  
+spring-cloud-stream-a配置内容：
+
+```text
+#设置分区(消费方设置）
+spring.cloud.stream.bindings.ChatExchanges-A-Input.consumer.partitioned=true
+spring.cloud.stream.instance-count=1
+spring.cloud.stream.instance-index=0
+#设置分区(生产方设置）
+spring.cloud.stream.bindings.ChatExchanges-A-Output.producer.partitionKeyExpression=headers.router
+spring.cloud.stream.bindings.ChatExchanges-A-Output.producer.partitionCount=1
+```
+
+spring-cloud-stream-b配置内容：
+
+```text
+#设置分区(消费方设置）
+spring.cloud.stream.bindings.ChatExchanges-A-Output.consumer.partitioned=true
+spring.cloud.stream.instance-count=1
+spring.cloud.stream.instance-index=0
+#设置分区(生产方设置）
+spring.cloud.stream.bindings.ChatExchanges-A-Input.producer.partitionKeyExpression=headers.router
+spring.cloud.stream.bindings.ChatExchanges-A-Input.producer.partitionCount=1
+```
+
+修改spring-cloud-stream-a和spring-cloud-stream-b的发送消息代码：  
+spring-cloud-stream-a：
+
+```java
+	//StreamListener自带了Json转对象的能力，收到B的消息打印并回复B一个新的消息。
+	@StreamListener(ChatInput.INPUT)
+	public void PrintInput(ChatMessage message) {
+
+		logger.info(message.ShowMessage());
+
+		ChatMessage replyMessage = new ChatMessage("ClientA","A To B Message.", new Date());
+
+		//这里只是测试实际业务根据需要设计特征值的范围，这个和消费组内有多少实例有关，然后把特征值放在消息头router属性中
+		int feature = 1;
+		Map<String, Object> headers = new HashMap<>();
+		headers.put("router", feature);
+
+		GenericMessage<ChatMessage> genericMessage = new GenericMessage<>(replyMessage,headers);
+
+		chatOutput.output().send(MessageBuilder.fromMessage(genericMessage).build());
+	}
+```
+
+spring-cloud-stream-b：
+
+```java
+	//每秒发出一个消息给A
+	@Bean
+	@InboundChannelAdapter(value = ChatProcessor.OUTPUT,poller = @Poller(fixedDelay="1000"))
+	public GenericMessage<ChatMessage> SendChatMessage(){
+		ChatMessage message = new ChatMessage("ClientB","B To A Message.", new Date());
+
+		//这里只是测试实际业务根据需要设计特征值的范围，这个和消费组内有多少实例有关，然后把特征值放在消息头router属性中
+		int feature = 1;
+		Map<String, Object> headers = new HashMap<>();
+		headers.put("router", feature);
+
+		return  new GenericMessage<>(message,headers);
+	}
+```
+
+运行结果：  
+![Alt text](http://static.bluersw.com/images/spring-cloud-stream/spring-cloud-stream-04.png)  
+![Alt text](http://static.bluersw.com/images/spring-cloud-stream/spring-cloud-stream-05.png)  
+![Alt text](http://static.bluersw.com/images/spring-cloud-stream/spring-cloud-stream-06.png)  
+![Alt text](http://static.bluersw.com/images/spring-cloud-stream/spring-cloud-stream-07.png)  
+![Alt text](http://static.bluersw.com/images/spring-cloud-stream/spring-cloud-stream-08.png)  
